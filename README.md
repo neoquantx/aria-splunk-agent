@@ -1,4 +1,3 @@
----
 # ▲ ARIA — Agentic Response & Investigation Assistant
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
@@ -6,8 +5,6 @@
 ![Built with Splunk](https://img.shields.io/badge/Built%20with-Splunk-black.svg)
 
 ARIA is an AI-powered multi-agent system that autonomously detects, investigates, and responds to security threats using Splunk's AI capabilities and MCP Server. What takes a SOC analyst 60+ minutes, ARIA completes in under 60 seconds.
-
----
 
 ## The Problem
 
