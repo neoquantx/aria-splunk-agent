@@ -1,4 +1,3 @@
-import { RadialBarChart, RadialBar, ResponsiveContainer } from 'recharts'
 import { TrendingUp, Server, Users, Clock } from 'lucide-react'
 
 export default function RiskGauge({ riskScore, attackStage, summary }) {
@@ -15,7 +14,6 @@ export default function RiskGauge({ riskScore, attackStage, summary }) {
   }
 
   const color = getColor(riskScore)
-  const data = [{ value: riskScore, fill: color }]
 
   return (
     <div className="space-y-4">
@@ -25,27 +23,28 @@ export default function RiskGauge({ riskScore, attackStage, summary }) {
           <h2 className="text-white font-semibold text-lg">Risk Score</h2>
         </div>
 
-        <div className="relative h-48">
-          <ResponsiveContainer width="100%" height="100%">
-            <RadialBarChart
-              cx="50%" cy="70%"
-              innerRadius="60%" outerRadius="90%"
-              startAngle={180} endAngle={0}
-              data={data}
-            >
-              <RadialBar dataKey="value" cornerRadius={8} background={{ fill: '#1a2235' }} />
-            </RadialBarChart>
-          </ResponsiveContainer>
-          <div className="absolute inset-0 flex flex-col items-center justify-center pb-4">
-            <div className="text-5xl font-bold font-mono" style={{ color }}>{riskScore}</div>
-            <div className="text-soc-muted text-sm">out of 100</div>
-            <div className="text-xs font-bold mt-1 px-3 py-0.5 rounded-full" style={{ color, background: `${color}20` }}>
-              {getLabel(riskScore)}
+        <div className="flex flex-col items-center py-4">
+          <div
+            className="relative w-48 h-48 rounded-full flex items-center justify-center"
+            style={{
+              background: `conic-gradient(${color} 0% ${riskScore}%, #1a2235 ${riskScore}% 100%)`,
+              padding: '8px'
+            }}
+          >
+            <div className="w-full h-full rounded-full bg-soc-card flex flex-col items-center justify-center">
+              <div className="text-5xl font-bold font-mono" style={{ color }}>{riskScore}</div>
+              <div className="text-soc-muted text-xs mt-1">out of 100</div>
+              <div
+                className="text-xs font-bold mt-2 px-3 py-0.5 rounded-full"
+                style={{ color, background: `${color}25`, border: `1px solid ${color}40` }}
+              >
+                {getLabel(riskScore)}
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="mt-2 grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-2 mt-2">
           {[
             { label: 'Threats', value: '3', icon: '🎯' },
             { label: 'Systems', value: '3', icon: '🖥️' },
