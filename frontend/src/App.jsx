@@ -4,6 +4,8 @@ import ThreatFeed from './components/ThreatFeed'
 import RiskGauge from './components/RiskGauge'
 import AttackTimeline from './components/AttackTimeline'
 import ARIAChat from './components/ARIAChat'
+import AgentProgress from './components/AgentProgress'
+import ImpactBanner from './components/ImpactBanner'
 import { getHealthCheck, getDemoScenario, getSplunkStatus } from './api'
 
 export default function App() {
@@ -12,6 +14,9 @@ export default function App() {
   const [splunkConnected, setSplunkConnected] = useState(false)
   const [activeTab, setActiveTab] = useState('dashboard')
   const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString())
+  const [scanning, setScanning] = useState(false)
+  const [agentProgress, setAgentProgress] = useState([])
+  const [showProgress, setShowProgress] = useState(false)
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date().toLocaleTimeString()), 1000)
@@ -35,6 +40,32 @@ export default function App() {
       console.error('Failed to load data:', err)
     }
     setLoading(false)
+  }
+
+  const runFullScan = async () => {
+    if (scanning) return
+    setScanning(true)
+    setShowProgress(true)
+    setAgentProgress([])
+
+    const steps = [
+      { agent: 'ThreatScout', message: 'Scanning all indexes for anomalies...', delay: 800 },
+      { agent: 'ThreatScout', message: '3 threats detected — severity 9, 7, 8', delay: 1600 },
+      { agent: 'Investigator', message: 'Building attack timeline from 12 events...', delay: 2600 },
+      { agent: 'Investigator', message: 'Attack stage identified: exfiltration', delay: 3400 },
+      { agent: 'Correlator', message: 'Mapping to MITRE ATT&CK framework...', delay: 4400 },
+      { agent: 'Correlator', message: '4 techniques matched — T1110, T1021, T1059, T1071', delay: 5200 },
+      { agent: 'Strategist', message: 'Calculating risk score and generating playbook...', delay: 6200 },
+      { agent: 'Strategist', message: 'Risk score: 91/100 — CRITICAL. Playbook ready.', delay: 7000 },
+    ]
+
+    for (const step of steps) {
+      await new Promise(r => setTimeout(r, step.delay - (steps.indexOf(step) > 0 ? steps[steps.indexOf(step)-1].delay : 0)))
+      setAgentProgress(prev => [...prev, step])
+    }
+
+    await loadData()
+    setScanning(false)
   }
 
   return (
@@ -74,16 +105,28 @@ export default function App() {
           </div>
           <span className="text-soc-muted font-mono text-xs">{currentTime}</span>
           <button
-            onClick={loadData}
-            className="bg-soc-green text-black text-xs font-bold px-4 py-1.5 rounded-full hover:bg-opacity-80 transition-all"
+            onClick={runFullScan}
+            disabled={scanning}
+            className={`text-black text-xs font-bold px-4 py-1.5 rounded-full transition-all ${
+              scanning 
+                ? 'bg-soc-amber animate-pulse cursor-not-allowed' 
+                : 'bg-soc-green hover:bg-opacity-80'
+            }`}
           >
-            RUN SCAN
+            {scanning ? 'SCANNING...' : 'RUN SCAN'}
           </button>
         </div>
       </nav>
 
       {/* Main Content */}
       <main className="p-6">
+        {showProgress && (
+          <AgentProgress
+            progress={agentProgress}
+            scanning={scanning}
+            onClose={() => setShowProgress(false)}
+          />
+        )}
         {loading ? (
           <div className="flex items-center justify-center h-96">
             <div className="text-center">
@@ -94,18 +137,21 @@ export default function App() {
         ) : (
           <>
             {activeTab === 'dashboard' && (
-              <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-                <div className="xl:col-span-2 space-y-6">
-                  <ThreatFeed threats={report?.threats || []} onRefresh={loadData} />
+              <>
+                <ImpactBanner riskScore={report?.risk_score || 0} threatCount={report?.threats?.length || 0} />
+                <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                  <div className="xl:col-span-2 space-y-6">
+                    <ThreatFeed threats={report?.threats || []} onRefresh={loadData} />
+                  </div>
+                  <div className="space-y-6">
+                    <RiskGauge
+                      riskScore={report?.risk_score || 0}
+                      attackStage={report?.attack_stage || 'unknown'}
+                      summary={report?.executive_summary || ''}
+                    />
+                  </div>
                 </div>
-                <div className="space-y-6">
-                  <RiskGauge
-                    riskScore={report?.risk_score || 0}
-                    attackStage={report?.attack_stage || 'unknown'}
-                    summary={report?.executive_summary || ''}
-                  />
-                </div>
-              </div>
+              </>
             )}
             {activeTab === 'timeline' && (
               <AttackTimeline timeline={report?.investigation?.timeline || []} correlation={report?.correlation || {}} />
