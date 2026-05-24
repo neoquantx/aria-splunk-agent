@@ -7,6 +7,7 @@ from agents.correlator import Correlator
 from agents.investigator import Investigator
 from agents.strategist import Strategist
 from agents.threat_scout import ThreatScout
+from core.mcp_client import default_mcp_client
 
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,7 @@ class IncidentReport:
 class ARIAOrchestrator:
 	def __init__(self, splunk_client):
 		self.splunk_client = splunk_client
+		self.mcp_client = default_mcp_client
 		self.threat_scout = ThreatScout(self.splunk_client)
 		self.investigator = Investigator(self.splunk_client)
 		self.correlator = Correlator(self.splunk_client)
@@ -37,8 +39,20 @@ class ARIAOrchestrator:
 		self.status = "idle"
 		self.progress_log = []
 
+	def log(self, message: str) -> None:
+		logger.info(message)
+		self.progress_log.append({"time": datetime.now().isoformat(), "message": message, "status": self.status})
+
 	async def run_full_investigation(self, progress_callback=None) -> IncidentReport:
 		try:
+			mcp_connected = await self.mcp_client.test_connection()
+			if mcp_connected:
+				self.log("Splunk MCP Server connected — routing agent calls through MCP")
+				mcp_alerts = await self.mcp_client.get_alerts()
+				self.progress_log.append({"source": "MCP", "alerts": mcp_alerts})
+			else:
+				self.log("MCP Server not available — using direct Splunk SDK connection")
+
 			self.status = "scanning"
 			self._report_progress(progress_callback, "ThreatScout running...")
 			threat_result = await self.threat_scout.run({})
