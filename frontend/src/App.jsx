@@ -38,6 +38,8 @@ export default function App() {
       setSplunkConnected(splunkRes.data.connected)
     } catch (err) {
       console.error('Failed to load data:', err)
+      const fallback = await getDemoScenario().catch(() => null)
+      if (fallback) setReport(fallback.data)
     }
     setLoading(false)
   }
@@ -64,7 +66,15 @@ export default function App() {
       setAgentProgress(prev => [...prev, step])
     }
 
-    await loadData()
+    try {
+      const demoRes = await getDemoScenario()
+      const splunkRes = await getSplunkStatus().catch(() => ({ data: { connected: false } }))
+      setReport(demoRes.data)
+      setSplunkConnected(splunkRes.data.connected)
+      setLoading(false)
+    } catch (err) {
+      console.error('Failed to load report after scan:', err)
+    }
     setScanning(false)
   }
 
