@@ -14,9 +14,10 @@ class ThreatScout(BaseAgent):
 	def run_deep_time_series_forecast(self) -> list:
 		"""Use Cisco Deep Time Series Model via Splunk AI Toolkit for anomaly forecasting."""
 		spl = """search index=main sourcetype=linux_secure 
-		| timechart span=10m count as login_count
-		| fit CDTSModel login_count future_timespan=6 holdback=0
-		| fields _time, login_count, predicted_login_count, lower95, upper95"""
+| timechart span=10m count as login_count
+| predict login_count future_timespan=6 holdback=0 conf_interval=95
+| eval anomaly=if(login_count > upper95, \"spike_detected\", \"normal\")
+| fields _time, login_count, predicted(login_count), upper95, lower95, anomaly"""
 		
 		results = self.splunk_client.run_spl_search(spl, earliest="-24h")
 		
