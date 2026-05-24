@@ -4,11 +4,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import splunklib.client as splunk_client
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
 
-SPLUNK_HOST = "localhost"
-SPLUNK_PORT = 8089
-SPLUNK_USER = "admin"
-SPLUNK_PASS = "Splunk@123"
+load_dotenv()
+
+SPLUNK_HOST = os.getenv("SPLUNK_HOST", "localhost")
+SPLUNK_PORT = int(os.getenv("SPLUNK_PORT", "8089"))
+SPLUNK_USER = os.getenv("SPLUNK_USERNAME", "admin")
+SPLUNK_PASS = os.getenv("SPLUNK_PASSWORD", "")
 
 BASE_TIME = datetime(2026, 5, 20, 1, 15, 0)
 
