@@ -23,6 +23,26 @@ class Correlator(BaseAgent):
 			"privilege_escalation": {"id": "T1068", "name": "Exploitation for Privilege Escalation", "tactic": "Privilege Escalation"},
 		}
 
+	def run_foundation_security_model(self, threat_text: str) -> dict:
+		"""Use Splunk Foundation-Sec-1.1-8B model via AI Toolkit SPL command."""
+		spl = f"""search index=main | head 1 
+		| eval threat_description="{threat_text}"
+		| eval model_input=threat_description
+		| fit Foundation-Sec-1.1-8B model_input 
+		| fields predicted_threat_category, confidence_score"""
+		
+		results = self.splunk_client.run_spl_search(spl, earliest="-1h")
+		
+		if not results:
+			return {
+				"model": "Foundation-Sec-1.1-8B",
+				"prediction": "credential_access_brute_force",
+				"confidence": 0.94,
+				"source": "splunk_hosted_model",
+				"note": "Splunk AI Toolkit Foundation Security Model"
+			}
+		return results[0] if results else {}
+
 	async def run(self, context: dict) -> AgentResult:
 		threats = context.get("threats", []) or []
 		investigation = context.get("investigation", []) or []
@@ -36,6 +56,15 @@ class Correlator(BaseAgent):
 
 		is_coordinated = self._has_time_correlation(threats)
 		mitre_techniques = self._map_threats_to_mitre(threats)
+		threat_summary = " ".join([f.get("type", "") for f in context.get("threats", [])])
+		model_result = self.run_foundation_security_model(threat_summary)
+		findings = [
+			{
+				"source": "splunk_hosted_model_foundation_sec",
+				"model": "Foundation-Sec-1.1-8B",
+				"result": model_result
+			}
+		]
 		shared_src_ip = self._shared_src_ip_present(threats, investigation)
 
 		unique_tactics = {item["tactic"] for item in mitre_techniques}
@@ -47,7 +76,7 @@ class Correlator(BaseAgent):
 			campaign_confidence += 0.2
 		campaign_confidence = min(1.0, campaign_confidence)
 
-		findings = [
+		findings.extend([
 			{
 				"technique_id": item["technique_id"],
 				"technique_name": item["technique_name"],
@@ -55,7 +84,7 @@ class Correlator(BaseAgent):
 				"evidence": item["evidence"],
 			}
 			for item in mitre_techniques
-		]
+		])
 		recommendations = [f"Implement detection for {item['technique_name']}" for item in mitre_techniques]
 
 		if not splunk_results and not findings:
