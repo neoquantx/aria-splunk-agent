@@ -77,8 +77,22 @@ async def chat_with_aria(body: ChatMessage):
 			"generated_spl": generated_spl
 		}
 
+	threat_names = [t.get('type','').replace('_',' ') for t in report.get('threats', [])]
+	stage = report.get('attack_stage', 'unknown')
+	risk = report.get('risk_score', 0)
+    
+	responses = [
+		f"Current status: {risk}/100 risk, attack stage is {stage}. The primary threat is {threat_names[0] if threat_names else 'unknown'}.",
+		f"ARIA has identified {len(report.get('threats',[]))} active threats. Highest severity: {max([t.get('severity',0) for t in report.get('threats',[])], default=0)}/10. Ask me about the playbook or affected systems.",
+		f"Attack is at {stage} stage with risk {risk}/100. {len(report.get('correlation',{}).get('mitre_techniques',[]))} MITRE techniques mapped. Type 'playbook' for immediate actions.",
+		f"I detected threats from {report.get('threats',[{}])[0].get('src_ip','unknown IP') if report.get('threats') else 'unknown'}. The attack progressed to {stage}. Ask me: risk score, affected systems, remediation, or MITRE techniques.",
+	]
+    
+	import hashlib
+	idx = int(hashlib.md5(body.message.encode()).hexdigest(), 16) % len(responses)
+    
 	return {
-		"response": f"ARIA has detected {len(report.get('threats', []))} threats with risk score {report.get('risk_score', 0)}/100. Ask me about: risk score, affected systems, playbook, MITRE techniques, or attack stage.{spl_context}",
+		"response": responses[idx],
 		"agent": "Orchestrator",
 		"confidence": 0.85,
 		"splunk_ai_assistant_used": bool(generated_spl),
