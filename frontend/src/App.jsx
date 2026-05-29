@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Shield, Activity, AlertTriangle, Terminal, Wifi, WifiOff } from 'lucide-react'
 import ThreatFeed from './components/ThreatFeed'
 import RiskGauge from './components/RiskGauge'
@@ -8,41 +8,84 @@ import AgentProgress from './components/AgentProgress'
 import ImpactBanner from './components/ImpactBanner'
 import { getHealthCheck, getDemoScenario, getSplunkStatus } from './api'
 
+const FALLBACK_REPORT = {
+  id: "demo-001",
+  timestamp: new Date().toISOString(),
+  threats: [
+    { type: "brute_force", severity: 9, src_ip: "185.220.101.47", user: "admin", count: 847, time_window: "20 minutes", affected_assets: ["web-server-01"], description: "847 failed SSH attempts from external IP" },
+    { type: "anomaly_detected", severity: 7, src_ip: "185.220.101.47", anomaly_score: 0.94, description: "Unusual login time pattern detected by Splunk ML", affected_assets: ["web-server-01"] },
+    { type: "outbound_spike", severity: 8, dest_ip: "45.142.212.100", total_bytes: 157286400, description: "Large outbound transfer to unknown external IP", affected_assets: ["internal-host-03"] }
+  ],
+  investigation: {
+    timeline: [
+      { timestamp: "2026-05-20T01:15:00", event_type: "failed_ssh", src: "185.220.101.47", dest: "web-server-01", action: "failed password", user: "admin" },
+      { timestamp: "2026-05-20T01:22:00", event_type: "failed_ssh", src: "185.220.101.47", dest: "web-server-01", action: "failed password", user: "admin" },
+      { timestamp: "2026-05-20T01:28:00", event_type: "failed_ssh", src: "185.220.101.47", dest: "web-server-01", action: "failed password", user: "admin" },
+      { timestamp: "2026-05-20T01:34:00", event_type: "failed_ssh", src: "185.220.101.47", dest: "web-server-01", action: "failed password", user: "admin" },
+      { timestamp: "2026-05-20T01:35:00", event_type: "successful_ssh", src: "185.220.101.47", dest: "web-server-01", action: "accepted password", user: "admin" },
+      { timestamp: "2026-05-20T01:36:00", event_type: "command_execution", src: "185.220.101.47", dest: "web-server-01", action: "whoami", user: "admin" },
+      { timestamp: "2026-05-20T01:36:30", event_type: "command_execution", src: "185.220.101.47", dest: "web-server-01", action: "id", user: "admin" },
+      { timestamp: "2026-05-20T01:52:00", event_type: "lateral_ssh", src: "web-server-01", dest: "internal-host-02", action: "ssh connection established", user: "svc-web" },
+      { timestamp: "2026-05-20T02:10:00", event_type: "lateral_ssh", src: "internal-host-02", dest: "internal-host-03", action: "ssh connection established", user: "svc-admin" },
+      { timestamp: "2026-05-20T02:31:00", event_type: "c2_contact", src: "internal-host-03", dest: "45.142.212.100", action: "https session initiated", user: "svc-admin" },
+      { timestamp: "2026-05-20T02:40:00", event_type: "staging", src: "internal-host-03", dest: "45.142.212.100", action: "prepare archive for transfer", user: "svc-admin" },
+      { timestamp: "2026-05-20T02:47:00", event_type: "large_file_transfer", src: "internal-host-03", dest: "45.142.212.100", action: "file transfer completed", user: "svc-admin" }
+    ]
+  },
+  correlation: {
+    mitre_techniques: [
+      { technique_id: "T1110", technique_name: "Brute Force", tactic: "Credential Access" },
+      { technique_id: "T1021", technique_name: "Remote Services", tactic: "Lateral Movement" },
+      { technique_id: "T1059", technique_name: "Command and Scripting Interpreter", tactic: "Execution" },
+      { technique_id: "T1071", technique_name: "Application Layer Protocol", tactic: "Command and Control" }
+    ],
+    is_coordinated: true,
+    campaign_confidence: 0.87
+  },
+  strategy: {
+    playbook: {
+      immediate: ["Block all outbound from affected hosts", "Notify data protection officer", "Preserve forensic evidence", "Disable compromised admin credentials", "Isolate internal-host-03"],
+      short_term: ["Identify all exfiltrated data", "Notify affected parties", "Review all privileged SSH activity"],
+      long_term: ["Implement DLP solution", "Encrypt sensitive data at rest", "Deploy MFA and PAM"]
+    }
+  },
+  risk_score: 91,
+  executive_summary: "ARIA detected an active exfiltration attack with a high degree of confidence. The activity progressed from brute-force access to lateral movement and command execution before outbound staging and transfer. Immediate containment and evidence preservation are critical.",
+  attack_stage: "exfiltration",
+  status: "complete"
+}
+
 export default function App() {
-  const [report, setReport] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [report, setReport] = useState(FALLBACK_REPORT)
+  const [loading, setLoading] = useState(false)
   const [splunkConnected, setSplunkConnected] = useState(false)
   const [activeTab, setActiveTab] = useState('dashboard')
-  const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString())
   const [scanning, setScanning] = useState(false)
   const [agentProgress, setAgentProgress] = useState([])
   const [showProgress, setShowProgress] = useState(false)
+  const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString())
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date().toLocaleTimeString()), 1000)
     return () => clearInterval(timer)
   }, [])
 
-  useEffect(() => {
-    loadData()
-  }, [])
-
-  const loadData = async () => {
-    setLoading(true)
+  const loadData = useCallback(async () => {
     try {
-      const [demoRes, splunkRes] = await Promise.all([
-        getDemoScenario(),
-        getSplunkStatus().catch(() => ({ data: { connected: false } }))
-      ])
-      setReport(demoRes.data)
+      const demoRes = await getDemoScenario()
+      if (demoRes.data && demoRes.data.threats && demoRes.data.threats.length > 0) {
+        setReport(demoRes.data)
+      }
+      const splunkRes = await getSplunkStatus().catch(() => ({ data: { connected: false } }))
       setSplunkConnected(splunkRes.data.connected)
     } catch (err) {
-      console.error('Failed to load data:', err)
-      const fallback = await getDemoScenario().catch(() => null)
-      if (fallback) setReport(fallback.data)
+      console.log('Using offline demo data')
     }
-    setLoading(false)
-  }
+  }, [])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
 
   const runFullScan = async () => {
     if (scanning) return
@@ -66,15 +109,7 @@ export default function App() {
       setAgentProgress(prev => [...prev, step])
     }
 
-    try {
-      const demoRes = await getDemoScenario()
-      const splunkRes = await getSplunkStatus().catch(() => ({ data: { connected: false } }))
-      setReport(demoRes.data)
-      setSplunkConnected(splunkRes.data.connected)
-      setLoading(false)
-    } catch (err) {
-      console.error('Failed to load report after scan:', err)
-    }
+    await loadData()
     setScanning(false)
   }
 
@@ -137,40 +172,31 @@ export default function App() {
             onClose={() => setShowProgress(false)}
           />
         )}
-        {loading ? (
-          <div className="flex items-center justify-center h-96">
-            <div className="text-center">
-              <Activity className="text-soc-green mx-auto mb-4 animate-pulse" size={48} />
-              <p className="text-soc-green font-mono">ARIA scanning for threats...</p>
-            </div>
-          </div>
-        ) : (
-          <>
-            {activeTab === 'dashboard' && (
-              <>
-                <ImpactBanner riskScore={report?.risk_score || 0} threatCount={report?.threats?.length || 0} />
-                <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-                  <div className="xl:col-span-2 space-y-6">
-                    <ThreatFeed threats={report?.threats || []} onRefresh={loadData} />
-                  </div>
-                  <div className="space-y-6">
-                    <RiskGauge
-                      riskScore={report?.risk_score || 0}
-                      attackStage={report?.attack_stage || 'unknown'}
-                      summary={report?.executive_summary || ''}
-                    />
-                  </div>
+        <>
+          {activeTab === 'dashboard' && (
+            <>
+              <ImpactBanner riskScore={report?.risk_score || 0} threatCount={report?.threats?.length || 0} />
+              <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                <div className="xl:col-span-2 space-y-6">
+                  <ThreatFeed threats={report?.threats || []} onRefresh={loadData} />
                 </div>
-              </>
-            )}
-            {activeTab === 'timeline' && (
-              <AttackTimeline timeline={report?.investigation?.timeline || []} correlation={report?.correlation || {}} />
-            )}
-            {activeTab === 'chat' && (
-              <ARIAChat report={report} />
-            )}
-          </>
-        )}
+                <div className="space-y-6">
+                  <RiskGauge
+                    riskScore={report?.risk_score || 0}
+                    attackStage={report?.attack_stage || 'unknown'}
+                    summary={report?.executive_summary || ''}
+                  />
+                </div>
+              </div>
+            </>
+          )}
+          {activeTab === 'timeline' && (
+            <AttackTimeline timeline={report?.investigation?.timeline || []} correlation={report?.correlation || {}} />
+          )}
+          {activeTab === 'chat' && (
+            <ARIAChat report={report} />
+          )}
+        </>
       </main>
     </div>
   )
